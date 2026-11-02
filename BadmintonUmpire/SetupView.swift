@@ -68,19 +68,20 @@ struct SetupView: View {
             }
 
             Section {
-                TextField(lang.t("team.home"), text: $teamALabel)
-                    .onChange(of: teamALabel) { _, _ in teamACustom = true }
-                TextField(lang.t("team.away"), text: $teamBLabel)
-                    .onChange(of: teamBLabel) { _, _ in teamBCustom = true }
-                if mode == .doubles {
-                    TextField("\(displayName(teamALabel, fallback: .a)) \(lang.t("setup.player1"))", text: $nameA1)
-                    TextField("\(displayName(teamALabel, fallback: .a)) \(lang.t("setup.player2"))", text: $nameA2)
-                    TextField("\(displayName(teamBLabel, fallback: .b)) \(lang.t("setup.player1"))", text: $nameB1)
-                    TextField("\(displayName(teamBLabel, fallback: .b)) \(lang.t("setup.player2"))", text: $nameB2)
-                } else {
-                    TextField("\(displayName(teamALabel, fallback: .a)) \(lang.t("setup.player"))", text: $nameA1)
-                    TextField("\(displayName(teamBLabel, fallback: .b)) \(lang.t("setup.player"))", text: $nameB1)
-                }
+                teamEntry(
+                    title: lang.t("team.home"),
+                    label: $teamALabel,
+                    isCustom: $teamACustom,
+                    firstPlayer: $nameA1,
+                    secondPlayer: $nameA2
+                )
+                teamEntry(
+                    title: lang.t("team.away"),
+                    label: $teamBLabel,
+                    isCustom: $teamBCustom,
+                    firstPlayer: $nameB1,
+                    secondPlayer: $nameB2
+                )
             } header: {
                 Text(lang.t("setup.namesSection"))
             } footer: {
@@ -174,6 +175,29 @@ struct SetupView: View {
                 LanguageToggle()
             }
         }
+    }
+
+    private func teamEntry(
+        title: String,
+        label: Binding<String>,
+        isCustom: Binding<Bool>,
+        firstPlayer: Binding<String>,
+        secondPlayer: Binding<String>
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            TextField(title, text: label)
+                .font(.headline)
+                .onChange(of: label.wrappedValue) { _, _ in isCustom.wrappedValue = true }
+
+            VStack(alignment: .leading, spacing: 8) {
+                TextField(mode == .doubles ? lang.t("setup.player1") : lang.t("setup.player"), text: firstPlayer)
+                if mode == .doubles {
+                    TextField(lang.t("setup.player2"), text: secondPlayer)
+                }
+            }
+            .padding(.leading, 20)
+        }
+        .padding(.vertical, 4)
     }
 }
 

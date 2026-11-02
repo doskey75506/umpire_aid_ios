@@ -20,7 +20,7 @@ public struct TeamState: Equatable, Sendable {
 ///
 /// Rules implemented (confirmed with the product owner):
 /// - Rally point scoring; game won at `winScore` (with 2-point margin when `winBy2`,
-///   capped at 30: reaching 30 wins outright, e.g. 30:29).
+///   capped at the format's cap (15-point games cap at 21; other formats at 30).
 /// - Server is ALWAYS the player occupying the court matching the serving team's
 ///   score parity (even -> right, odd -> left).
 /// - Doubles: when the serving team wins a rally, the two partners swap courts
@@ -146,6 +146,24 @@ public struct MatchEngine: Equatable, Sendable {
     public var canUndo: Bool { !undoStack.isEmpty && phase != .finished }
 
     public var isBreak: Bool { phase == .midBreak || phase == .gameBreak }
+
+    /// True when one more point by `side` would win the current game
+    /// (game point). False once the game / match is decided.
+    public func isGamePoint(_ side: TeamSide) -> Bool {
+        guard phase == .playing || phase == .midBreak else { return false }
+        let next = team(side).points + 1
+        let opponent = team(side.other).points
+        if setup.winBy2 {
+            return next >= setup.winScore && (next - opponent >= 2 || next >= setup.capScore)
+        }
+        return next >= setup.winScore
+    }
+
+    /// True when winning the current game also wins the match (match point).
+    public func isMatchPoint(_ side: TeamSide) -> Bool {
+        guard isGamePoint(side) else { return false }
+        return team(side).gameWins + 1 >= setup.gamesToWin
+    }
 
     /// Seconds of rest for the current break phase, if any.
     public var breakDuration: Int? {
@@ -285,9 +303,9 @@ public struct MatchEngine: Equatable, Sendable {
         let target = setup.winScore
         let gameOver: Bool
         if setup.winBy2 {
-            // 2-point lead required, but capped: reaching 30 wins outright (e.g. 30:29).
+            // 2-point lead required, but the format cap wins outright.
             let lead = winnerState.points - loserState.points
-            gameOver = winnerState.points >= target && (lead >= 2 || winnerState.points >= 30)
+            gameOver = winnerState.points >= target && (lead >= 2 || winnerState.points >= setup.capScore)
         } else {
             gameOver = winnerState.points >= target
         }

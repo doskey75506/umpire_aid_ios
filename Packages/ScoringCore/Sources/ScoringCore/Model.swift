@@ -89,6 +89,10 @@ public struct MatchSetup: Codable, Equatable, Sendable {
     /// Interval-break threshold: first team to reach this score (21 -> 11, 15 -> 8).
     public var midScore: Int { (winScore + 1) / 2 }
 
+    /// Maximum score at which a win-by-two game ends regardless of the margin.
+    /// The 15-point format uses a 21-point cap; other formats retain the 30-point cap.
+    public var capScore: Int { winScore == 15 ? 21 : 30 }
+
     public func names(for team: TeamSide) -> [String] {
         team == .a ? teamANames : teamBNames
     }

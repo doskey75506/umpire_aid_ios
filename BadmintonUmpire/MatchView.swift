@@ -9,6 +9,8 @@ struct MatchView: View {
     @State private var engine: MatchEngine
     @State private var flipped = false
     @State private var breakRemaining = 0
+    @State private var midBreakCountdownStarted = false
+    @State private var intervalElapsed = 0
     @State private var nextServerChoice: TeamSide = .a
     @State private var recordSaved = false
     @State private var confirmExit = false
@@ -33,14 +35,21 @@ struct MatchView: View {
             VStack(spacing: 0) {
                 header
                 Divider()
-                HStack(spacing: 0) {
-                    teamPanel(leftTeam, isLeftPanel: true)
-                    Divider()
-                    teamPanel(rightTeam, isLeftPanel: false)
+                ZStack {
+                    HStack(spacing: 0) {
+                        teamPanel(leftTeam, isLeftPanel: true)
+                        Divider()
+                        teamPanel(rightTeam, isLeftPanel: false)
+                    }
+
+                    if engine.phase == .midBreak {
+                        intervalPopup
+                            .offset(y: -72)
+                    }
                 }
             }
 
-            if engine.isBreak {
+            if engine.phase == .gameBreak {
                 breakOverlay
             }
             if engine.phase == .finished {
@@ -98,6 +107,7 @@ struct MatchView: View {
         }
         .onAppear {
             breakRemaining = engine.breakDuration ?? 0
+            midBreakCountdownStarted = engine.phase != .midBreak
             if engine.phase == .gameBreak {
                 nextServerChoice = defaultNextServer
             }
@@ -109,13 +119,15 @@ struct MatchView: View {
         }
         .onChange(of: engine.phase) { _, newPhase in
             if newPhase == .midBreak {
-                breakRemaining = engine.setup.midBreakSeconds
+                midBreakCountdownStarted = false
+                intervalElapsed = 0
                 // Deciding game: change ends at the interval break.
                 if engine.gameIndex == engine.setup.bestOf - 1 {
                     flipped.toggle()
                 }
             } else if newPhase == .gameBreak {
                 breakRemaining = engine.setup.gameBreakSeconds
+                midBreakCountdownStarted = true
                 nextServerChoice = defaultNextServer
             } else if newPhase == .finished {
                 saveRecordIfNeeded()
@@ -126,11 +138,14 @@ struct MatchView: View {
             flipped.toggle()
         }
         .onReceive(clock) { _ in
-            guard engine.isBreak else { return }
-            if breakRemaining > 0 {
-                breakRemaining -= 1
-            } else {
-                endBreak()
+            if engine.phase == .midBreak, midBreakCountdownStarted {
+                intervalElapsed += 1
+            } else if engine.phase == .gameBreak {
+                if breakRemaining > 0 {
+                    breakRemaining -= 1
+                } else {
+                    endBreak()
+                }
             }
         }
     }
@@ -160,6 +175,8 @@ struct MatchView: View {
     /// players stand diagonally across the net (top-down court view).
     private func teamPanel(_ side: TeamSide, isLeftPanel: Bool) -> some View {
         let state = engine.team(side)
+        let gamePoint = engine.isGamePoint(side)
+        let matchPoint = engine.isMatchPoint(side)
 
         return VStack(spacing: 10) {
             Text(teamDisplay(engine.setup, side))
@@ -181,10 +198,32 @@ struct MatchView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Text("\(state.points)")
-                .font(.system(size: 84, weight: .black, design: .rounded))
-                .minimumScaleFactor(0.5)
-                .lineLimit(1)
+            ZStack {
+                Text("\(state.points)")
+                    .font(.system(size: 84, weight: .black, design: .rounded))
+                    .minimumScaleFactor(0.5)
+                    .lineLimit(1)
+                    .foregroundStyle(gamePoint ? Color.red : Color.primary)
+                    .shadow(color: gamePoint ? .red.opacity(0.6) : .clear, radius: gamePoint ? 8 : 0)
+
+            }
+            .frame(height: 104)
+
+            if matchPoint {
+                Label(lang.t("match.matchPoint"), systemImage: "flag.checkered")
+                    .font(.caption.bold())
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Color.red, in: Capsule())
+                    .foregroundStyle(.white)
+            } else if gamePoint {
+                Label(lang.t("match.gamePoint"), systemImage: "1.circle.fill")
+                    .font(.caption.bold())
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Color.orange, in: Capsule())
+                    .foregroundStyle(.white)
+            }
 
             if engine.setup.mode == .doubles {
                 DraggableCourtRack(
@@ -231,7 +270,7 @@ struct MatchView: View {
 
     private var breakOverlay: some View {
         VStack(spacing: 20) {
-            Text(engine.phase == .midBreak ? lang.t("match.midBreak") : lang.t("match.gameBreak"))
+            Text(lang.t("match.gameBreak"))
                 .font(.title2.bold())
             Text(countdownString(breakRemaining))
                 .font(.system(size: 64, weight: .black, design: .rounded))
@@ -256,10 +295,6 @@ struct MatchView: View {
                         .foregroundStyle(.secondary)
                 }
                 .foregroundStyle(.secondary)
-            } else {
-                Text("\(lang.t("match.currentScore")) \(engine.points(for: .a)) : \(engine.points(for: .b))")
-                    .font(.headline)
-                    .foregroundStyle(.secondary)
             }
 
             Button {
@@ -274,6 +309,42 @@ struct MatchView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.ultraThinMaterial)
+    }
+
+    private var intervalPopup: some View {
+        VStack(spacing: 6) {
+            if midBreakCountdownStarted {
+                Text(elapsedString(intervalElapsed))
+                    .font(.system(size: 42, weight: .black, design: .rounded))
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 6)
+                    .background(intervalElapsed >= 35 ? Color.red : Color.orange, in: RoundedRectangle(cornerRadius: 12))
+                    .foregroundStyle(.white)
+                Button(lang.t("match.skipBreak")) {
+                    endBreak()
+                }
+                .font(.caption.bold())
+                .buttonStyle(.bordered)
+                .tint(intervalElapsed >= 35 ? .red : .orange)
+            } else {
+                Text(lang.t("match.intervalReady"))
+                    .font(.title2.bold())
+                    .foregroundStyle(.orange)
+                Button(lang.t("match.startInterval")) {
+                    midBreakCountdownStarted = true
+                }
+                .font(.headline.bold())
+                .buttonStyle(.borderedProminent)
+                .tint(.orange)
+            }
+        }
+        .padding(16)
+        .frame(minWidth: 220)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .shadow(radius: 8)
+        .accessibilityElement(children: .contain)
     }
 
     private var finishedOverlay: some View {
@@ -329,6 +400,10 @@ struct MatchView: View {
         String(format: "%d:%02d", seconds / 60, seconds % 60)
     }
 
+    private func elapsedString(_ seconds: Int) -> String {
+        String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+
     private func saveRecordIfNeeded() {
         guard !recordSaved, let record = engine.makeRecord() else { return }
         store.save(record)
@@ -376,13 +451,15 @@ struct PlayerCardView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity)
+        .foregroundStyle(isServer ? Color.white : Color.primary)
         .background(
             RoundedRectangle(cornerRadius: 10)
-                .fill(isServer ? Color.orange.opacity(0.25) : Color(.secondarySystemBackground))
+                .fill(isServer ? Color.orange : Color(.secondarySystemBackground))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 10)
-                .stroke(isServer ? Color.orange : Color.clear, lineWidth: 2)
+                .stroke(isServer ? Color.orange.opacity(0.7) : Color.clear, lineWidth: 3)
         )
+        .shadow(color: isServer ? Color.orange.opacity(0.55) : .clear, radius: 8)
     }
 }
