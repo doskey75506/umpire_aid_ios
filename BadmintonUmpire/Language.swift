@@ -42,7 +42,7 @@ final class LanguageManager: ObservableObject {
 
     private static let table: [String: [AppLanguage: String]] = [
         "app.title": [.zh: "羽裁助手", .en: "UmpireAid"],
-        "nav.start": [.zh: "开始比赛", .en: "Start Match"],
+        "nav.start": [.zh: "准备比赛", .en: "Prepare Match"],
         "nav.history": [.zh: "历史记录", .en: "History"],
         "team.home": [.zh: "主队", .en: "Host Team"],
         "team.away": [.zh: "客队", .en: "Away Team"],
